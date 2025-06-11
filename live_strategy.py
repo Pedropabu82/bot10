@@ -9,7 +9,7 @@ import talib
 from datetime import datetime, timedelta
 import traceback
 from auto_retrain import train_from_log
-from signal_engine import SignalEngine
+from signal_engine import SignalEngine, generate_signals
 from features import extract_features
 
 logger = logging.getLogger(__name__)
@@ -54,12 +54,11 @@ class LiveMAStrategy:
                 df = await self.client.fetch_candles(symbol, timeframe, limit=300)
                 if df is not None and not df.empty:
                     self.data[symbol][timeframe] = df
-                    self._save_ohlcv(symbol, timeframe, df)
+                    self._save_ohlcv(symbol, df)
                     feats = extract_features(df)
+                    feats = generate_signals(feats, self.config)
                     out = pd.concat([df.reset_index(drop=True), feats], axis=1)
-                    out["entry_signal"] = 0
-                    out["exit_signal"] = 0
-                    path = f"data/features_signals_{symbol}_{timeframe}.csv"
+                    path = f"data/features_signals_{symbol}.csv"
                     header = not os.path.exists(path)
                     out.to_csv(path, mode="a", header=header, index=False)
                     logger.info(f"Loaded {len(df)} candles for {symbol} {timeframe}")
@@ -91,30 +90,33 @@ class LiveMAStrategy:
         except Exception as e:
             logger.error(f"Failed to load precision for {symbol}: {e}")
 
-    def _save_ohlcv(self, symbol: str, timeframe: str, df: pd.DataFrame):
-        """Append OHLCV data to disk for later training."""
-        path = f"data/ohlcv_{symbol}_{timeframe}.csv"
-        header = not os.path.exists(path)
+    def _save_ohlcv(self, symbol: str, df: pd.DataFrame):
+        """Persist OHLCV data in Parquet format for later training."""
+        path = f"data/ohlcv_{symbol}.parquet"
         try:
-            df.to_csv(path, mode="a", header=header, index=False)
+            if os.path.exists(path):
+                existing = pd.read_parquet(path)
+                df = pd.concat([existing, df]).drop_duplicates("timestamp")
+            df.to_parquet(path, index=True)
         except Exception as e:
-            logger.error(f"Failed to save OHLCV for {symbol} {timeframe}: {e}")
+            logger.error(f"Failed to save OHLCV for {symbol}: {e}")
 
     def _log_features(self, symbol: str, timeframe: str, entry: int = 0, exit_f: int = 0):
         """Persist latest features with entry/exit labels."""
         df = self.data[symbol].get(timeframe, pd.DataFrame())
         if df.empty:
             return
-        feats = extract_features(df).iloc[-1:]
-        row = pd.concat([df.iloc[-1:], feats], axis=1)
+        feats = extract_features(df)
+        feats = generate_signals(feats, self.config)
+        row = pd.concat([df, feats], axis=1).iloc[-1:]
         row["entry_signal"] = entry
         row["exit_signal"] = exit_f
-        path = f"data/features_signals_{symbol}_{timeframe}.csv"
+        path = f"data/features_signals_{symbol}.csv"
         header = not os.path.exists(path)
         try:
             row.to_csv(path, mode="a", header=header, index=False)
         except Exception as e:
-            logger.error(f"Failed to log features for {symbol} {timeframe}: {e}")
+            logger.error(f"Failed to log features for {symbol}: {e}")
 
     def process_timeframe_data(self, symbol, timeframe, kline):
         df = self.data[symbol].setdefault(
@@ -139,7 +141,7 @@ class LiveMAStrategy:
         ])
         df = pd.concat([df, new]).drop_duplicates("timestamp").tail(60)
         self.data[symbol][timeframe] = df
-        self._save_ohlcv(symbol, timeframe, new)
+        self._save_ohlcv(symbol, new)
         self._log_features(symbol, timeframe)
 
     def process_tick(self, symbol, tick):

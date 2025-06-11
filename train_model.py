@@ -7,6 +7,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 import joblib
+from features import extract_features
 
 logger = logging.getLogger(__name__)
 
