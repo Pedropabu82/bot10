@@ -5,7 +5,6 @@ import numpy as np
 import ccxt
 import joblib
 import xgboost as xgb
-import talib
 import time
 import os
 import logging
@@ -68,12 +67,12 @@ def train_from_log(trade_log='data/trade_log.csv', config_file='config.json'):
         ema_long = indicator_cfg.get(symbol, {}).get('ema_long', 21)
         feats = extract_features(
             df,
-            bb_period=bb_period,
-            bb_k=bb_k,
-            stoch_k_period=stoch_k_period,
-            stoch_d_period=stoch_d_period,
-            ema_short=ema_short,
-            ema_long=ema_long,
+            bb_window=bb_period,
+            bb_std=bb_k,
+            stoch_window=stoch_k_period,
+            stoch_smooth=stoch_d_period,
+            ema_fast=ema_short,
+            ema_slow=ema_long,
         )
         if feats.empty:
             logger.warning(f"Features vazias para {symbol} {timeframe}, pulando...")

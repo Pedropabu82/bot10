@@ -266,12 +266,12 @@ class LiveMAStrategy:
                 return True
             feats = extract_features(
                 df,
-                bb_period=self.config.get('bb_period', 20),
-                bb_k=self.config.get('bb_k', 2),
-                stoch_k_period=self.config.get('stoch_k_period', 14),
-                stoch_d_period=self.config.get('stoch_d_period', 3),
-                ema_short=self.config['indicators'][symbol].get('ema_short', 12),
-                ema_long=self.config['indicators'][symbol].get('ema_long', 26),
+                bb_window=self.config.get('bb_period', 20),
+                bb_std=self.config.get('bb_k', 2),
+                stoch_window=self.config.get('stoch_k_period', 14),
+                stoch_smooth=self.config.get('stoch_d_period', 3),
+                ema_fast=self.config['indicators'][symbol].get('ema_short', 12),
+                ema_slow=self.config['indicators'][symbol].get('ema_long', 26),
             )
             features = feats.iloc[-1].to_dict()
             macd, macdsignal, _ = self._calculate_macd(symbol, df)
