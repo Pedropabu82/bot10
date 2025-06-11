@@ -14,10 +14,13 @@ def walk_forward(df: pd.DataFrame, train_size: int, test_size: int, n_splits: in
         yield train, test
 
 
-def monte_carlo(df: pd.DataFrame, sample_size: int, runs: int = 100):
-    """Generator yielding random contiguous samples for Monte Carlo backtesting."""
+def monte_carlo_simulation(df: pd.DataFrame, sample_size: int, runs: int = 100):
+    """Generate random contiguous samples for Monte Carlo backtesting."""
     if len(df) < sample_size:
         raise ValueError("Sample size larger than data")
     for _ in range(runs):
         start = np.random.randint(0, len(df) - sample_size)
         yield df.iloc[start : start + sample_size]
+
+# Backwards compatibility
+monte_carlo = monte_carlo_simulation

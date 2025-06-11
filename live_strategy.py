@@ -6,6 +6,7 @@ import ccxt.async_support as ccxt
 import asyncio
 import logging
 import talib
+from joblib import load
 from datetime import datetime, timedelta
 import traceback
 from auto_retrain import train_from_log
@@ -40,6 +41,14 @@ class LiveMAStrategy:
         self.daily_trades = {symbol: [] for symbol in self.symbols}
         self.min_qty = {'BTCUSDT': 0.001, 'ETHUSDT': 0.01, 'SOLUSDT': 0.1}
         self.signal_engine = SignalEngine()
+        # load optional entry model
+        self.entry_model = None
+        try:
+            if os.path.exists('models/entry_model.pkl'):
+                self.entry_model = load('models/entry_model.pkl')
+                logger.info('Entry model loaded')
+        except Exception as e:
+            logger.warning(f'Failed to load entry model: {e}')
         self.min_ai_confidence = config.get('min_ai_confidence', 0.5)
         self.maker_offset = config.get('maker_offset', 0)
         self.entry_tf = {symbol: None for symbol in self.symbols}
@@ -158,18 +167,34 @@ class LiveMAStrategy:
             df["close"], fastperiod=fast, slowperiod=slow, signalperiod=signal
         )
 
+    def _get_regime_params(self, df: pd.DataFrame):
+        from regime import detect_regime
+
+        regime = detect_regime(df, self.config)
+        params = self.config.get("regimes", {}).get(regime, {})
+        merged = {**self.config, **params}
+        return merged
+
     def get_signal_for_timeframe(self, symbol, timeframe):
-        df = self.data[symbol].get(timeframe,pd.DataFrame())
-        if len(df)<30: return None
-        ema_s=talib.EMA(df['close'],timeperiod=self.config['indicators'][symbol].get('ema_short',12))
-        ema_l=talib.EMA(df['close'],timeperiod=self.config['indicators'][symbol].get('ema_long',26))
+        df = self.data[symbol].get(timeframe, pd.DataFrame())
+        if len(df) < 30:
+            return None
+
+        params = self._get_regime_params(df)
+        ind_cfg = self.config.get('indicators', {}).get(symbol, {})
+        ema_short = params.get('ema_fast', ind_cfg.get('ema_short', 12))
+        ema_long = params.get('ema_slow', ind_cfg.get('ema_long', 26))
+
+        ema_s = talib.EMA(df['close'], timeperiod=ema_short)
+        ema_l = talib.EMA(df['close'], timeperiod=ema_long)
         long=short=0
         if ema_s.iloc[-1]>ema_l.iloc[-1]: long+=2
         elif ema_s.iloc[-1]<ema_l.iloc[-1]: short+=2
         macd, signal, _ = self._calculate_macd(symbol, df)
         if macd.iloc[-1]>signal.iloc[-1]: long+=1
         elif macd.iloc[-1]<signal.iloc[-1]: short+=1
-        rsi=talib.RSI(df['close'],timeperiod=self.config['indicators'][symbol].get('rsi',14))
+        rsi_period = params.get('rsi_window', ind_cfg.get('rsi', 14))
+        rsi = talib.RSI(df['close'], timeperiod=rsi_period)
         if rsi.iloc[-1]>70: short+=1
         elif rsi.iloc[-1]<30: long+=1
         adx=talib.ADX(df['high'],df['low'],df['close'],14)
@@ -195,11 +220,17 @@ class LiveMAStrategy:
         return None,None
 
     def get_signal_for_timeframe_score(self,symbol,tf):
-        df=self.data[symbol].get(tf,pd.DataFrame())
-        if len(df)<30: return 0
+        df = self.data[symbol].get(tf, pd.DataFrame())
+        if len(df) < 30:
+            return 0
+        params = self._get_regime_params(df)
+        ind_cfg = self.config.get('indicators', {}).get(symbol, {})
+        ema_short = params.get('ema_fast', ind_cfg.get('ema_short', 12))
+        ema_long = params.get('ema_slow', ind_cfg.get('ema_long', 26))
+
         long=short=0
-        ema_s=talib.EMA(df['close'],timeperiod=self.config['indicators'][symbol].get('ema_short',12))
-        ema_l=talib.EMA(df['close'],timeperiod=self.config['indicators'][symbol].get('ema_long',26))
+        ema_s=talib.EMA(df['close'],timeperiod=ema_short)
+        ema_l=talib.EMA(df['close'],timeperiod=ema_long)
         if ema_s.iloc[-1]>ema_l.iloc[-1]: long+=2
         elif ema_s.iloc[-1]<ema_l.iloc[-1]: short+=2
         macd, signal, _ = self._calculate_macd(symbol, df)
@@ -207,9 +238,12 @@ class LiveMAStrategy:
             long += 1
         elif macd.iloc[-1] < signal.iloc[-1]:
             short += 1
-        rsi=talib.RSI(df['close'],timeperiod=self.config['indicators'][symbol].get('rsi',14))
-        if rsi.iloc[-1]>70: short+=1
-        elif rsi.iloc[-1]<30: long+=1
+        rsi_period = params.get('rsi_window', ind_cfg.get('rsi', 14))
+        rsi=talib.RSI(df['close'], timeperiod=rsi_period)
+        if rsi.iloc[-1]>70:
+            short+=1
+        elif rsi.iloc[-1]<30:
+            long+=1
         adx=talib.ADX(df['high'],df['low'],df['close'],14)
         if adx.iloc[-1]>25:
             if ema_s.iloc[-1]>ema_l.iloc[-1]: long+=1.5
@@ -281,7 +315,18 @@ class LiveMAStrategy:
             features['macdsignal'] = macdsignal.iloc[-1]
 
             result = self.signal_engine.get_signal_for_timeframe(features, symbol=symbol, timeframe=timeframe)
-            return result['ok'] and result['confidence'] >= self.min_ai_confidence
+
+            if not (result['ok'] and result['confidence'] >= self.min_ai_confidence):
+                return False
+
+            if hasattr(self, 'entry_model') and self.entry_model is not None:
+                import pandas as _pd
+                proba = float(self.entry_model.predict_proba(_pd.DataFrame([features]))[0][1])
+                if proba < self.min_ai_confidence:
+                    logger.info(f"Entry model rejected trade for {symbol} {timeframe} (prob={proba:.2f})")
+                    return False
+
+            return True
         except Exception as e:
             logger.error(f"AI check failed for {symbol}: {e}")
             return True
