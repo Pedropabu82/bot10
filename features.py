@@ -1,6 +1,10 @@
 import pandas as pd
-from ta.trend import EMAIndicator, MACD, ADXIndicator
-from ta.momentum import RSIIndicator, StochasticOscillator, CCIIndicator, ROCIndicator
+from ta.trend import EMAIndicator, MACD, ADXIndicator, CCIIndicator
+from ta.momentum import (
+    RSIIndicator,
+    StochasticOscillator,
+    RateOfChangeIndicator as ROCIndicator,
+)
 from ta.volatility import (
     BollingerBands,
     AverageTrueRange,
