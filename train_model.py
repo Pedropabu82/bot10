@@ -1,5 +1,6 @@
 """Training utilities for building the XGBoost model from trade logs."""
 
+import os
 import pandas as pd
 import numpy as np
 import xgboost as xgb
@@ -19,6 +20,7 @@ def train_model(log_path='data/trade_log.csv', model_output='model_xgb.pkl', con
         trades = pd.read_csv(log_path)
         with open(config_file, 'r') as f:
             cfg = json.load(f)
+        os.makedirs(os.path.dirname(model_output) or ".", exist_ok=True)
         bb_period = cfg.get('bb_period', 20)
         bb_k = cfg.get('bb_k', 2)
         stoch_k_period = cfg.get('stoch_k_period', 14)
