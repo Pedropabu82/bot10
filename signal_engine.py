@@ -4,11 +4,12 @@ import joblib
 import os
 import logging
 import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 class SignalEngine:
-    def __init__(self, model_path="model_xgb.pkl"):
+    def __init__(self, model_path="models/log_xgb_model.pkl"):
         self.model = None
         self.model_path = model_path
         self.load_model()
@@ -62,3 +63,28 @@ class SignalEngine:
         except Exception as e:
             logger.error(f"Erro ao gerar sinal: {e}")
             return {"ok": False, "confidence": 0.0}
+
+
+def generate_signals(df: pd.DataFrame, parameters: dict) -> pd.DataFrame:
+    """Compute entry and exit signals for a dataframe using weighted ensemble."""
+    df = df.copy()
+    weights = parameters.get("signal_weights", {})
+    entry_th = parameters.get("entry_thresh", 0.5)
+    exit_th = parameters.get("exit_thresh", 0.5)
+
+    signals = pd.DataFrame(index=df.index)
+    signals["ema"] = (df.get("ema_fast") > df.get("ema_slow")).astype(int)
+    signals["rsi"] = (df.get("rsi") < parameters.get("rsi_oversold", 30)).astype(int)
+    signals["macd"] = (df.get("macd_hist") > 0).astype(int)
+    signals["adx"] = (df.get("adx") > parameters.get("adx_thresh", 25)).astype(int)
+
+    score = (
+        signals["ema"] * weights.get("ema", 0)
+        + signals["rsi"] * weights.get("rsi", 0)
+        + signals["macd"] * weights.get("macd", 0)
+        + signals["adx"] * weights.get("adx", 0)
+    )
+    df["ensemble_score"] = score
+    df["entry_signal"] = (score >= entry_th).astype(int)
+    df["exit_signal"] = (score <= exit_th).astype(int)
+    return df
