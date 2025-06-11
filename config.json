@@ -1,48 +1,63 @@
 {
-  "api_key": "0a044906df97f304267105b396629088be25695dcd0d777e9a33b8aa111535fb",
-  "api_secret": "15d5583a6bab5d8b63af90fbf34d5d741742539725f1ec4eae69833469470e13",
-  "testnet": true,
-  "leverage": 10,
-  "entry_timeout_sec": 30,
-  "min_ai_confidence": 0.5,
-  "max_trades_per_day": 5,
-  "maker_offset": 0.0001,
-  "bb_period": 20,
-  "bb_k": 2,
-  "stoch_k_period": 14,
-  "stoch_d_period": 3,
-  "signal_priority": false,
-  "tp": {"BTCUSDT": 0.07, "SOLUSDT": 0.07},
-  "sl": {"BTCUSDT": 0.025, "SOLUSDT": 0.025},
-  "signal_weights": {
-    "ema": 0.3,
-    "rsi": 0.2,
-    "macd": 0.1,
-    "adx": 0.4
-  },
-  "entry_thresh": 0.6,
-  "exit_thresh": 0.4,
-  "regimes": {
-    "trend": {"ema_fast":8, "ema_slow":21},
-    "range": {"ema_fast":12, "ema_slow":26},
-    "volatile": {"ema_fast":5, "ema_slow":20}
-  },
-  "indicators": {
-    "BTCUSDT": {
-      "ema_short": 12,
-      "ema_long": 26,
-      "rsi": 14,
-      "macd_fast": 12,
-      "macd_slow": 26,
-      "macd_signal": 9
+    "api_key": "0a044906df97f304267105b396629088be25695dcd0d777e9a33b8aa111535fb",
+    "api_secret": "15d5583a6bab5d8b63af90fbf34d5d741742539725f1ec4eae69833469470e13",
+    "testnet": true,
+    "leverage": 10,
+    "entry_timeout_sec": 30,
+    "min_ai_confidence": 0.5,
+    "max_trades_per_day": 5,
+    "maker_offset": 0.0001,
+    "bb_period": 20,
+    "bb_k": 2,
+    "stoch_k_period": 14,
+    "stoch_d_period": 3,
+    "signal_priority": false,
+    "tp": {
+        "BTCUSDT": 0.07,
+        "SOLUSDT": 0.07
     },
-    "SOLUSDT": {
-      "ema_short": 12,
-      "ema_long": 26,
-      "rsi": 14,
-      "macd_fast": 12,
-      "macd_slow": 26,
-      "macd_signal": 9
+    "sl": {
+        "BTCUSDT": 0.025,
+        "SOLUSDT": 0.025
+    },
+    "signal_weights": {
+        "ema": 0.3,
+        "rsi": 0.2,
+        "macd": 0.1,
+        "adx": 0.4
+    },
+    "entry_thresh": 0.6,
+    "exit_thresh": 0.4,
+    "regimes": {
+        "trend": {
+            "ema_fast": 8,
+            "ema_slow": 21
+        },
+        "range": {
+            "ema_fast": 12,
+            "ema_slow": 26
+        },
+        "volatile": {
+            "ema_fast": 5,
+            "ema_slow": 20
+        }
+    },
+    "indicators": {
+        "BTCUSDT": {
+            "ema_short": 12,
+            "ema_long": 26,
+            "rsi": 14,
+            "macd_fast": 12,
+            "macd_slow": 26,
+            "macd_signal": 9
+        },
+        "SOLUSDT": {
+            "ema_short": 12,
+            "ema_long": 26,
+            "rsi": 14,
+            "macd_fast": 12,
+            "macd_slow": 26,
+            "macd_signal": 9
+        }
     }
-  }
 }
