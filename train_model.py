@@ -3,7 +3,6 @@
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-import talib
 import joblib
 import logging
 import json
@@ -45,12 +44,12 @@ def train_model(log_path='data/trade_log.csv', model_output='model_xgb.pkl', con
                 ema_long = indicator_cfg.get(row['symbol'], {}).get('ema_long', 21)
                 feats = extract_features(
                     df,
-                    bb_period=bb_period,
-                    bb_k=bb_k,
-                    stoch_k_period=stoch_k_period,
-                    stoch_d_period=stoch_d_period,
-                    ema_short=ema_short,
-                    ema_long=ema_long,
+                    bb_window=bb_period,
+                    bb_std=bb_k,
+                    stoch_window=stoch_k_period,
+                    stoch_smooth=stoch_d_period,
+                    ema_fast=ema_short,
+                    ema_slow=ema_long,
                 )
                 if feats.empty:
                     continue
