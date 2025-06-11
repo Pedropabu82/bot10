@@ -1,6 +1,11 @@
 import pandas as pd
 from ta.trend import EMAIndicator, MACD, ADXIndicator
-from ta.momentum import RSIIndicator, StochasticOscillator, CCIIndicator, ROCIndicator
+from ta.momentum import RSIIndicator, StochasticOscillator, ROCIndicator
+try:
+    # ta>=0.11 puts CCIIndicator under the trend module
+    from ta.trend import CCIIndicator
+except ImportError:  # pragma: no cover - older versions
+    from ta.momentum import CCIIndicator
 from ta.volatility import (
     BollingerBands,
     AverageTrueRange,
