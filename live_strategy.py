@@ -1,5 +1,6 @@
 """Implementation of a moving average based trading strategy."""
 
+import os
 import pandas as pd
 import ccxt.async_support as ccxt
 import asyncio
@@ -41,6 +42,8 @@ class LiveMAStrategy:
         self.signal_engine = SignalEngine()
         self.min_ai_confidence = config.get('min_ai_confidence', 0.5)
         self.maker_offset = config.get('maker_offset', 0)
+        self.entry_tf = {symbol: None for symbol in self.symbols}
+        os.makedirs('data', exist_ok=True)
         logger.info(f"Initialized with symbols: {self.symbols}")
 
     async def initialize(self):
@@ -51,6 +54,14 @@ class LiveMAStrategy:
                 df = await self.client.fetch_candles(symbol, timeframe, limit=300)
                 if df is not None and not df.empty:
                     self.data[symbol][timeframe] = df
+                    self._save_ohlcv(symbol, timeframe, df)
+                    feats = extract_features(df)
+                    out = pd.concat([df.reset_index(drop=True), feats], axis=1)
+                    out["entry_signal"] = 0
+                    out["exit_signal"] = 0
+                    path = f"data/features_signals_{symbol}_{timeframe}.csv"
+                    header = not os.path.exists(path)
+                    out.to_csv(path, mode="a", header=header, index=False)
                     logger.info(f"Loaded {len(df)} candles for {symbol} {timeframe}")
                 else:
                     logger.warning(f"No data loaded for {symbol} {timeframe}")
@@ -80,6 +91,31 @@ class LiveMAStrategy:
         except Exception as e:
             logger.error(f"Failed to load precision for {symbol}: {e}")
 
+    def _save_ohlcv(self, symbol: str, timeframe: str, df: pd.DataFrame):
+        """Append OHLCV data to disk for later training."""
+        path = f"data/ohlcv_{symbol}_{timeframe}.csv"
+        header = not os.path.exists(path)
+        try:
+            df.to_csv(path, mode="a", header=header, index=False)
+        except Exception as e:
+            logger.error(f"Failed to save OHLCV for {symbol} {timeframe}: {e}")
+
+    def _log_features(self, symbol: str, timeframe: str, entry: int = 0, exit_f: int = 0):
+        """Persist latest features with entry/exit labels."""
+        df = self.data[symbol].get(timeframe, pd.DataFrame())
+        if df.empty:
+            return
+        feats = extract_features(df).iloc[-1:]
+        row = pd.concat([df.iloc[-1:], feats], axis=1)
+        row["entry_signal"] = entry
+        row["exit_signal"] = exit_f
+        path = f"data/features_signals_{symbol}_{timeframe}.csv"
+        header = not os.path.exists(path)
+        try:
+            row.to_csv(path, mode="a", header=header, index=False)
+        except Exception as e:
+            logger.error(f"Failed to log features for {symbol} {timeframe}: {e}")
+
     def process_timeframe_data(self, symbol, timeframe, kline):
         df = self.data[symbol].setdefault(
             timeframe,
@@ -103,6 +139,8 @@ class LiveMAStrategy:
         ])
         df = pd.concat([df, new]).drop_duplicates("timestamp").tail(60)
         self.data[symbol][timeframe] = df
+        self._save_ohlcv(symbol, timeframe, new)
+        self._log_features(symbol, timeframe)
 
     def process_tick(self, symbol, tick):
         for tf,df in self.data[symbol].items():
@@ -277,9 +315,12 @@ class LiveMAStrategy:
                 st=await self.client.exchange.fetch_order(order['id'],symbol)
                 if st['status'] in ['closed','FILLED']:
                     self.position_side[symbol]=side; self.entry_price[symbol]=float(st.get('price') or st.get('avgPrice')); self.quantity[symbol]=qty
+                    self.entry_tf[symbol] = tf
                     await self.set_sl(symbol); await self.set_tp(symbol)
                     self.daily_trades[symbol].append(datetime.now()); self.cooldown[symbol]=datetime.now()+timedelta(minutes=self.calculate_cooldown(symbol,tf))
-                    self.log_trade(symbol,'ENTRY',self.entry_price[symbol],0,'open',tf); return
+                    self.log_trade(symbol,'ENTRY',self.entry_price[symbol],0,'open',tf)
+                    self._log_features(symbol, tf, entry=1)
+                    return
                 if st['status']=='CANCELED':
                     return
             await self.client.exchange.cancel_order(order['id'],symbol)
@@ -350,12 +391,15 @@ class LiveMAStrategy:
             order=await self.client.exchange.create_order(symbol,'MARKET',side,abs(self.quantity[symbol]),None,params)
             entry=self.entry_price[symbol]; exit_price=float(order.get('avgPrice') or order.get('price'))
             result='win' if (self.position_side[symbol]=='long' and exit_price>entry) or (self.position_side[symbol]=='short' and exit_price<entry) else 'loss'
-            self.log_trade(symbol,'EXIT',entry,exit_price,result,'unknown')
+            tf = self.entry_tf.get(symbol, 'unknown')
+            self.log_trade(symbol,'EXIT',entry,exit_price,result,tf)
+            self._log_features(symbol, tf, exit_f=1)
             self.position_side[symbol]=None; self.entry_price[symbol]=None; self.quantity[symbol]=None; self.unrealized_pnl[symbol]=0
         except: await self.sync_position(symbol)
 
     def log_trade(self,symbol,trade_type,entry,exit_price,result,timeframe):
-        row=[datetime.now().strftime('%Y-%m-%d %H:%M:%S'),symbol,timeframe,trade_type,entry,exit_price,((exit_price-entry)/entry*100 if trade_type=='EXIT' else 0),result]
+        os.makedirs('data', exist_ok=True)
+        row=[datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),symbol,timeframe,trade_type,entry,exit_price,((exit_price-entry)/entry*100 if trade_type=='EXIT' else 0),result]
         try:
             with open('data/trade_log.csv','a') as f:
                 f.write(','.join(map(str, row)) + '\n')
